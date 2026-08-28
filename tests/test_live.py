@@ -114,7 +114,7 @@ async def test_nebius_echo_logprobs():
             model=NEBIUS_TEXT_MODEL,
             max_tokens=0,
             echo=True,
-            logprobs=5,
+            top_logprobs=5,
         )
         assert isinstance(result, Completion)
         # echo returns the prompt itself in `text`.

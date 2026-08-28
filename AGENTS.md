@@ -30,6 +30,13 @@ All through uv:
   logprobs features the resampling work needs. Responses is largely
   OpenAI-only; do not "upgrade" to it — add it as a separate backend if
   OpenAI-specific features are ever needed.
+- `src/interp_utils/llm/registry.py` — model registry: `get_model(name)`
+  resolves a logical name to a `Model` (spec + client) that auto-fills
+  the provider model id, applies the spec's sampling defaults, and
+  injects any OpenRouter backend pin. `ModelSpec` encodes *serving facts*
+  only (provider, id, echo support, sampling, backend pin) with a
+  `verified_on` date (None = reported, not checked) — never research
+  decisions about which model to use.
 - Planned (do not build speculatively): `judge/` (rubric autorater with
   N-vote aggregation and calibration export), `resample/` (fix prefix →
   resample N → judge → aggregate), `cot/` (trace parsing/chunking).

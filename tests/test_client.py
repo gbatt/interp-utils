@@ -195,7 +195,7 @@ async def test_complete_text_parses_echo_logprobs():
         lambda req: httpx.Response(200, json=_text_body("", logprobs=lp))
     )
     result = await client.complete_text(
-        "2+2=", model="m", echo=True, max_tokens=0, logprobs=1
+        "2+2=", model="m", echo=True, max_tokens=0, top_logprobs=1
     )
     assert isinstance(result, Completion)
     assert result.logprobs is not None

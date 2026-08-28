@@ -105,6 +105,7 @@ class LLMClient:
         *,
         model: str,
         temperature: float = 1.0,
+        top_p: float = 1.0,
         max_tokens: int | None = None,
         top_logprobs: int | None = None,
         extra_body: dict | None = None,
@@ -120,6 +121,7 @@ class LLMClient:
                 model=model,
                 messages=cast("list[ChatCompletionMessageParam]", messages),
                 temperature=temperature,
+                top_p=top_p,
                 max_tokens=max_tokens,
                 logprobs=top_logprobs is not None,
                 top_logprobs=top_logprobs,
@@ -151,7 +153,7 @@ class LLMClient:
         temperature: float = 1.0,
         top_p: float = 1.0,
         max_tokens: int | None = DEFAULT_TEXT_MAX_TOKENS,
-        logprobs: int | None = None,
+        top_logprobs: int | None = None,
         echo: bool = False,
         stop: str | list[str] | None = None,
         extra_body: dict | None = None,
@@ -161,11 +163,11 @@ class LLMClient:
 
         The prefix for fixed-prefix CoT resampling is baked directly into
         `prompt` (e.g. "...Assistant:\\n<think>\\n{prefix}"); the returned
-        `text` is the continuation. `logprobs=N` returns per-token
-        logprobs with N alternatives; `echo=True` with `max_tokens=0`
-        returns the prompt tokens' own logprobs for sentence-likelihood
-        scoring. `extra_body` passes provider-specific params (e.g. Nebius
-        logprob-shape quirks).
+        `text` is the continuation. `top_logprobs=N` returns per-token
+        logprobs with N alternatives (matching `complete`); `echo=True`
+        with `max_tokens=0` returns the prompt tokens' own logprobs for
+        sentence-likelihood scoring. `extra_body` passes provider-specific
+        params (e.g. Nebius logprob-shape quirks).
 
         `max_tokens` defaults to a finite cap (see DEFAULT_TEXT_MAX_TOKENS)
         rather than None, since None lets the provider generate until the
@@ -178,7 +180,7 @@ class LLMClient:
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
-                logprobs=logprobs,
+                logprobs=top_logprobs,
                 echo=echo,
                 stop=stop,
                 extra_body=extra_body,
