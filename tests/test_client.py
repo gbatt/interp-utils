@@ -8,7 +8,12 @@ patching HTTP globally.
 import httpx
 import pytest
 
-from interp_utils.llm import Completion, CompletionError, LLMClient, Usage
+from interp_utils.llm import (
+    Completion,
+    CompletionError,
+    LLMClient,
+    Usage,
+)
 
 
 def _chat_body(text: str, *, prompt=5, completion=7) -> dict:
@@ -27,6 +32,22 @@ def _chat_body(text: str, *, prompt=5, completion=7) -> dict:
             "prompt_tokens": prompt,
             "completion_tokens": completion,
             "total_tokens": prompt + completion,
+        },
+    }
+
+
+def _text_body(text: str, *, logprobs: dict | None = None) -> dict:
+    choice: dict = {"index": 0, "text": text, "finish_reason": "stop"}
+    choice["logprobs"] = logprobs
+    return {
+        "id": "x",
+        "object": "text_completion",
+        "model": "test-model",
+        "choices": [choice],
+        "usage": {
+            "prompt_tokens": 5,
+            "completion_tokens": 7,
+            "total_tokens": 12,
         },
     }
 
@@ -65,6 +86,29 @@ async def test_complete_parses_text_and_usage():
     assert result.text == "hello"
     assert result.finish_reason == "stop"
     assert result.usage == Usage(prompt_tokens=5, completion_tokens=7)
+
+
+async def test_complete_captures_reasoning_field():
+    # Providers return the CoT trace in a message field the SDK type
+    # omits (OpenRouter: `reasoning`). It should land in Completion.
+    body = _chat_body("391")
+    body["choices"][0]["message"]["reasoning"] = "17*23 = 391."
+    client = _client(lambda req: httpx.Response(200, json=body))
+    result = await client.complete(
+        [{"role": "user", "content": "17*23?"}], model="m"
+    )
+    assert isinstance(result, Completion)
+    assert result.text == "391"
+    assert result.reasoning == "17*23 = 391."
+
+
+async def test_complete_reasoning_none_when_absent():
+    client = _client(lambda req: httpx.Response(200, json=_chat_body("hi")))
+    result = await client.complete(
+        [{"role": "user", "content": "hi"}], model="m"
+    )
+    assert isinstance(result, Completion)
+    assert result.reasoning is None
 
 
 async def test_complete_sends_expected_request():
@@ -122,3 +166,86 @@ def test_usage_addition():
     b = Usage(prompt_tokens=3, completion_tokens=4)
     assert (a + b) == Usage(prompt_tokens=4, completion_tokens=6)
     assert (a + b).total_tokens == 10
+
+
+# --- text completions (/v1/completions) ---
+
+
+async def test_complete_text_parses_text_and_usage():
+    client = _client(lambda req: httpx.Response(200, json=_text_body("391")))
+    result = await client.complete_text("2+2=<think>\n", model="m")
+    assert isinstance(result, Completion)
+    assert result.kind == "text"
+    assert result.text == "391"
+    assert result.model == "m"
+    assert result.usage == Usage(prompt_tokens=5, completion_tokens=7)
+    assert result.logprobs is None
+
+
+async def test_complete_text_parses_echo_logprobs():
+    # Shape of an echo=True, max_tokens=0 response: prompt-token logprobs
+    # with text_offset for sentence slicing.
+    lp = {
+        "tokens": ["2", "+", "2", "="],
+        "token_logprobs": [None, -1.2, -0.3, -0.05],
+        "top_logprobs": [None, {"+": -1.2}, {"2": -0.3}, {"=": -0.05}],
+        "text_offset": [0, 1, 2, 3],
+    }
+    client = _client(
+        lambda req: httpx.Response(200, json=_text_body("", logprobs=lp))
+    )
+    result = await client.complete_text(
+        "2+2=", model="m", echo=True, max_tokens=0, logprobs=1
+    )
+    assert isinstance(result, Completion)
+    assert result.logprobs is not None
+    lps = result.logprobs
+    assert [t.token for t in lps] == ["2", "+", "2", "="]
+    assert [t.text_offset for t in lps] == [0, 1, 2, 3]
+    # First echoed token has neither a logprob nor alternatives.
+    assert lps[0].logprob is None
+    assert lps[0].top is None
+    assert lps[1].logprob == -1.2
+    assert lps[1].top == {"+": -1.2}
+
+
+async def test_complete_text_applies_finite_max_tokens_default():
+    # None would let the provider generate until context is full; the
+    # client must send a finite default instead.
+    seen: dict = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["body"] = req.content
+        return httpx.Response(200, json=_text_body("ok"))
+
+    client = _client(handler)
+    await client.complete_text("hi", model="m")
+    assert b'"max_tokens"' in seen["body"]
+    assert b'"max_tokens":null' not in seen["body"].replace(b" ", b"")
+
+
+async def test_complete_text_hits_completions_endpoint():
+    seen: dict = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["url"] = str(req.url)
+        return httpx.Response(200, json=_text_body("ok"))
+
+    client = _client(handler)
+    await client.complete_text("hi", model="m")
+    assert seen["url"].endswith("/completions")
+    assert "/chat/" not in seen["url"]
+
+
+async def test_complete_text_many_preserves_order_and_isolates_failures():
+    def handler(req: httpx.Request) -> httpx.Response:
+        if b'"1"' in req.content:
+            return httpx.Response(500, json={"error": "boom"})
+        return httpx.Response(200, json=_text_body("ok"))
+
+    client = _client(handler)
+    results = await client.complete_text_many(["0", "1", "2"], model="m")
+    assert len(results) == 3
+    assert isinstance(results[0], Completion)
+    assert isinstance(results[1], CompletionError)
+    assert isinstance(results[2], Completion)

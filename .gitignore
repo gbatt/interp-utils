@@ -22,3 +22,6 @@ wheels/
 
 # OS
 .DS_Store
+
+# Output files
+*.out

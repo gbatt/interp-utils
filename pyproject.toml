@@ -1,7 +1,7 @@
 [project]
 name = "interp-utils"
 version = "0.1.0"
-description = "Async utilities for black-box LLM experimentation: provider clients, resampling, judging"
+description = "Utils for LLM experimentation"
 readme = "README.md"
 authors = [
     { name = "Nikhil Raghu", email = "nikhil.1990@gmail.com" }
@@ -19,6 +19,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "jupyterlab>=4.6.3",
     "pip-audit>=2.10.0",
     "prek>=0.3.8",
     "pytest>=9.0.3",

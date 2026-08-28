@@ -1,8 +1,9 @@
 # interp-utils
 
-Async utilities for black-box LLM experimentation: provider clients,
-resampling, judging. Generic infrastructure only — no experiment-specific
-code belongs here.
+Utils for LLM experimentation. Generic infrastructure only — no
+experiment-specific code belongs here. The `llm/` layer is built first,
+but the repo is not limited to black-box methods — internals utilities
+(probes, loaders) are planned.
 
 ## Commands
 
@@ -23,6 +24,12 @@ All through uv:
   One `LLMClient` over the OpenAI SDK; providers (OpenRouter, Nebius)
   are base-URL + key presets. Bounded concurrency via anyio
   `CapacityLimiter`; per-model token-usage accounting on the client.
+  Uses the **Chat Completions** API (not Responses) deliberately: it is
+  the cross-provider standard that OpenRouter, Nebius, and open-model
+  servers implement, and it carries the prefill/continuation and
+  logprobs features the resampling work needs. Responses is largely
+  OpenAI-only; do not "upgrade" to it — add it as a separate backend if
+  OpenAI-specific features are ever needed.
 - Planned (do not build speculatively): `judge/` (rubric autorater with
   N-vote aggregation and calibration export), `resample/` (fix prefix →
   resample N → judge → aggregate), `cot/` (trace parsing/chunking).
@@ -45,3 +52,8 @@ All through uv:
 This repo is public. No secrets, no personal context, no
 project-specific research details in code, comments, or docs — keep
 everything here generic infrastructure. This applies to this file too.
+
+**Never push to GitHub without the owner's explicit review and
+go-ahead.** Commit locally, summarize what changed, and wait for
+approval before pushing. Pushing to a public repo is a publish action —
+treat it as stop-and-confirm, never batched into a build flow.

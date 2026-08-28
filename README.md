@@ -1,7 +1,6 @@
 # interp-utils
 
-Async utilities for black-box LLM experimentation: provider clients,
-resampling, judging.
+Utils for LLM experimentation.
 
 - **`interp_utils.llm`** — one async client over OpenAI-compatible
   providers (OpenRouter, Nebius): bounded concurrency, explicit failure
