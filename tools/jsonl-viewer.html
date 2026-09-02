@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSONL Viewer</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f7f9;
+    --bg-elev: #ffffff;
+    --fg: #1a1c1f;
+    --fg-muted: #6b7280;
+    --fg-faint: #9aa1ab;
+    --border: #e2e5ea;
+    --border-strong: #cfd4dc;
+    --accent: #2563eb;
+    --accent-bg: #e8f0fe;
+    --chip-bg: #eef1f5;
+    --danger: #b42318;
+    --danger-bg: #fef3f2;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b;
+      --bg-alt: #1b1e24;
+      --bg-elev: #1f232a;
+      --fg: #e6e9ee;
+      --fg-muted: #9aa1ab;
+      --fg-faint: #6b7280;
+      --border: #2a2f38;
+      --border-strong: #3a414d;
+      --accent: #60a5fa;
+      --accent-bg: #1e2a45;
+      --chip-bg: #262b33;
+      --danger: #f97066;
+      --danger-bg: #3a1d1d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.45;
+    overflow-x: hidden;
+  }
+  a { color: var(--accent); }
+  .wrap { display: flex; flex-direction: column; height: 100vh; }
+
+  /* Top chrome */
+  header {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-alt);
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+  .titlebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .titlebar h1 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  .titlebar .src { color: var(--fg-muted); font-family: var(--mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; }
+  .spacer { flex: 1 1 auto; }
+
+  .btn {
+    font-family: var(--sans); font-size: 12px;
+    background: var(--bg-elev); color: var(--fg);
+    border: 1px solid var(--border-strong); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.sm { padding: 2px 7px; font-size: 11px; }
+
+  .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  input[type=search], select {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--bg-elev); color: var(--fg);
+    border: 1px solid var(--border-strong); border-radius: 6px;
+    padding: 4px 8px;
+  }
+  input[type=search] { min-width: 240px; }
+  input[type=search]:focus, select:focus { outline: none; border-color: var(--accent); }
+
+  .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .filter-group { display: flex; align-items: center; gap: 5px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
+  .filter-group label { color: var(--fg-muted); font-family: var(--mono); font-size: 11px; }
+  .filter-group select { border: none; background: transparent; padding: 2px 2px; }
+
+  /* Summary */
+  .summary { display: flex; flex-direction: column; gap: 4px; }
+  .counts { display: flex; gap: 16px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; }
+  .counts .k { color: var(--fg-muted); }
+  .counts .v { color: var(--fg); font-weight: 600; }
+  .counts .warn .v { color: var(--danger); }
+  .breakdowns { display: flex; flex-direction: column; gap: 2px; }
+  .bd { font-family: var(--mono); font-size: 11px; color: var(--fg-muted); }
+  .bd .field { color: var(--fg); font-weight: 600; }
+  .bd .pair { color: var(--fg-muted); }
+  .bd .pair b { color: var(--fg); font-weight: 600; }
+  .bd .more { color: var(--fg-faint); }
+
+  /* Column toggles */
+  details.colcfg { font-size: 12px; }
+  details.colcfg > summary { cursor: pointer; color: var(--fg-muted); font-family: var(--mono); font-size: 11px; user-select: none; }
+  .coltoggles { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elev); max-height: 130px; overflow: auto; }
+  .coltoggles label { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+
+  /* Table area */
+  .tablewrap { flex: 1 1 auto; overflow: auto; position: relative; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--mono); font-size: 12px; }
+  thead th {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--bg-alt);
+    border-bottom: 1px solid var(--border-strong);
+    border-right: 1px solid var(--border);
+    text-align: left; font-weight: 600; color: var(--fg);
+    padding: 5px 8px; white-space: nowrap; cursor: pointer; user-select: none;
+    vertical-align: bottom;
+  }
+  thead th .sort { color: var(--fg-faint); font-size: 10px; margin-left: 3px; }
+  thead th.rownum { cursor: default; color: var(--fg-faint); }
+  tbody td {
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    padding: 4px 8px; vertical-align: top;
+    max-width: 520px;
+  }
+  tbody tr:nth-child(even) td { background: var(--bg-alt); }
+  tbody tr:hover td { background: var(--accent-bg); }
+  td.rownum { color: var(--fg-faint); text-align: right; user-select: none; white-space: nowrap; }
+  td.err-row { }
+  .val-null { color: var(--fg-faint); }
+  .val-num { color: var(--fg); }
+  .val-bool { color: var(--accent); }
+  .val-str { color: var(--fg); white-space: pre-wrap; word-break: break-word; }
+  .val-json { color: var(--fg-muted); white-space: pre-wrap; word-break: break-word; }
+  .longcell .short { white-space: pre-wrap; word-break: break-word; }
+  .longcell .full { white-space: pre-wrap; word-break: break-word; }
+  .expander { color: var(--accent); cursor: pointer; font-size: 11px; margin-left: 4px; white-space: nowrap; user-select: none; }
+  .cellchip { display: inline-block; background: var(--chip-bg); border-radius: 4px; padding: 0 5px; }
+
+  /* Drop zone / empty state */
+  .drop {
+    flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 24px;
+  }
+  .drop.hidden { display: none; }
+  .dropcard {
+    border: 2px dashed var(--border-strong); border-radius: 12px;
+    padding: 40px 48px; max-width: 620px; background: var(--bg-elev);
+  }
+  .dropcard h2 { margin: 0 0 8px; font-size: 16px; }
+  .dropcard p { margin: 6px 0; color: var(--fg-muted); }
+  .dropcard .hint { font-family: var(--mono); font-size: 11px; color: var(--fg-faint); }
+  body.dragging .dropcard { border-color: var(--accent); background: var(--accent-bg); }
+  .filelabel { display: inline-block; margin-top: 10px; }
+  .loadmore { padding: 12px; text-align: center; }
+  .footer-status { flex: 0 0 auto; border-top: 1px solid var(--border); padding: 4px 12px; font-family: var(--mono); font-size: 11px; color: var(--fg-muted); background: var(--bg-alt); }
+  .err-badge { color: var(--danger); background: var(--danger-bg); border-radius: 4px; padding: 0 5px; font-size: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header id="chrome" hidden>
+    <div class="titlebar">
+      <h1>JSONL Viewer</h1>
+      <span class="src" id="srcLabel"></span>
+      <div class="spacer"></div>
+      <label class="btn sm filelabel">Open file<input id="fileInput2" type="file" accept=".jsonl,.json,.txt,application/json" hidden></label>
+    </div>
+    <div class="summary">
+      <div class="counts" id="counts"></div>
+      <div class="breakdowns" id="breakdowns"></div>
+    </div>
+    <div class="controls">
+      <input id="search" type="search" placeholder="substring search across visible fields…" autocomplete="off">
+      <div class="filters" id="filters"></div>
+      <div class="spacer"></div>
+      <button class="btn sm" id="clearFilters">Clear filters</button>
+    </div>
+    <details class="colcfg">
+      <summary>Columns</summary>
+      <div class="coltoggles" id="coltoggles"></div>
+    </details>
+  </header>
+
+  <div class="drop" id="dropzone">
+    <div class="dropcard">
+      <h2>Drop a .jsonl file here</h2>
+      <p>One JSON object per line. Blank and malformed lines are tolerated.</p>
+      <label class="btn filelabel">Choose file…<input id="fileInput" type="file" accept=".jsonl,.json,.txt,application/json" hidden></label>
+      <p class="hint" id="fetchHint"></p>
+    </div>
+  </div>
+
+  <div class="tablewrap" id="tablewrap" hidden>
+    <table id="table">
+      <thead id="thead"></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="loadmore" id="loadmore" hidden><button class="btn" id="loadmoreBtn"></button></div>
+  </div>
+
+  <div class="footer-status" id="footer" hidden></div>
+</div>
+
+<script>
+"use strict";
+(function () {
+  // ---------- State ----------
+  var STATE = {
+    records: [],        // parsed objects
+    malformed: 0,       // count of unparseable non-blank lines
+    blank: 0,
+    fields: [],         // ordered union of top-level field names
+    fieldMeta: {},      // name -> { maxStrLen, hasLong, distinct:Set|null, isLowCard, count, numeric }
+    lowCardFields: [],  // subset that qualify for dropdown filters
+    visible: {},        // field -> bool
+    filters: {},        // field -> selected value string ('' = all)
+    search: "",
+    sortField: null,
+    sortDir: 1,
+    filtered: [],       // indices into records after filtering+sort
+    rendered: 0,        // how many rows currently in DOM
+    lateFields: false,  // fields discovered after first scan window
+  };
+
+  var CHUNK = 200;          // rows rendered per batch
+  var SCAN_WINDOW = 200;    // records scanned for initial field detection
+  var LONG_LEN = 200;       // chars above which strings are truncated
+  var LOWCARD_MAX = 25;     // distinct-value ceiling for categorical filter
+  var LOWCARD_SAMPLE = 5000;// cap distinct tracking to avoid unbounded memory
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- Parsing ----------
+  function parseJSONL(text) {
+    var records = [], malformed = 0, blank = 0;
+    // Split on \n; handle \r\n. Avoid keeping the giant text around longer than needed.
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.charCodeAt(line.length - 1) === 13) line = line.slice(0, -1); // strip trailing \r
+      if (line.trim() === "") { blank++; continue; }
+      try {
+        var obj = JSON.parse(line);
+        // Only object records participate as rows; wrap primitives/arrays.
+        if (obj === null || typeof obj !== "object" || Array.isArray(obj)) {
+          records.push({ _value: obj });
+        } else {
+          records.push(obj);
+        }
+      } catch (e) {
+        malformed++;
+      }
+    }
+    return { records: records, malformed: malformed, blank: blank };
+  }
+
+  // ---------- Field detection ----------
+  function analyze() {
+    var records = STATE.records;
+    var order = [];
+    var meta = {};
+    function ensure(name) {
+      if (!meta[name]) {
+        meta[name] = { count: 0, maxStrLen: 0, hasLong: false, distinct: new Set(), distinctCapped: false, numericCount: 0, nonNullCount: 0 };
+        order.push(name);
+      }
+      return meta[name];
+    }
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+      var firstScan = i < SCAN_WINDOW;
+      for (var key in rec) {
+        if (!Object.prototype.hasOwnProperty.call(rec, key)) continue;
+        var known = !!meta[key];
+        if (!known && !firstScan) STATE.lateFields = true;
+        var m = ensure(key);
+        m.count++;
+        var v = rec[key];
+        if (v !== null && v !== undefined) {
+          m.nonNullCount++;
+          if (typeof v === "number") m.numericCount++;
+          var s;
+          if (typeof v === "string") s = v;
+          else if (typeof v === "object") s = JSON.stringify(v);
+          else s = String(v);
+          if (s.length > m.maxStrLen) m.maxStrLen = s.length;
+          if (s.length > LONG_LEN) m.hasLong = true;
+          if (m.distinct && !m.distinctCapped) {
+            // key distinct on a compact scalar representation
+            var dk = (typeof v === "object") ? null : s;
+            if (dk === null) { m.distinct = null; }
+            else {
+              m.distinct.add(dk);
+              if (m.distinct.size > LOWCARD_MAX + 5) { m.distinctCapped = true; }
+              if (i > LOWCARD_SAMPLE && m.distinct.size > LOWCARD_MAX) { m.distinctCapped = true; }
+            }
+          }
+        }
+      }
+    }
+    // Determine low-cardinality categorical fields
+    var lowCard = [];
+    for (var f = 0; f < order.length; f++) {
+      var name = order[f];
+      var mm = meta[name];
+      mm.isLowCard = false;
+      if (mm.distinct && !mm.distinctCapped && mm.distinct.size > 0 && mm.distinct.size <= LOWCARD_MAX && !mm.hasLong) {
+        mm.isLowCard = true;
+        lowCard.push(name);
+      }
+      mm.numeric = mm.nonNullCount > 0 && mm.numericCount === mm.nonNullCount;
+    }
+    STATE.fields = order;
+    STATE.fieldMeta = meta;
+    STATE.lowCardFields = lowCard;
+
+    // Default visibility: show unless a long-text field. Always show if scalar/short.
+    STATE.visible = {};
+    for (var g = 0; g < order.length; g++) {
+      var nm = order[g];
+      STATE.visible[nm] = !meta[nm].hasLong;
+    }
+    // Guarantee at least a couple of columns visible.
+    var anyVisible = order.some(function (n) { return STATE.visible[n]; });
+    if (!anyVisible && order.length) STATE.visible[order[0]] = true;
+
+    STATE.filters = {};
+    STATE.sortField = null;
+  }
+
+  // ---------- Value counting for breakdowns (respects current filters except self) ----------
+  function valueCounts(field, indices) {
+    var counts = Object.create(null);
+    for (var i = 0; i < indices.length; i++) {
+      var rec = STATE.records[indices[i]];
+      var v = rec[field];
+      var key;
+      if (v === undefined) key = "(absent)";
+      else if (v === null) key = "null";
+      else if (typeof v === "object") key = "(object)";
+      else key = String(v);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function sortedCountPairs(counts) {
+    var pairs = [];
+    for (var k in counts) pairs.push([k, counts[k]]);
+    pairs.sort(function (a, b) { return b[1] - a[1] || (a[0] < b[0] ? -1 : 1); });
+    return pairs;
+  }
+
+  // ---------- Filtering ----------
+  function passesFilters(rec) {
+    // categorical filters
+    for (var f in STATE.filters) {
+      var want = STATE.filters[f];
+      if (want === "" || want === undefined) continue;
+      var v = rec[f];
+      var got;
+      if (v === undefined) got = "(absent)";
+      else if (v === null) got = "null";
+      else if (typeof v === "object") got = "(object)";
+      else got = String(v);
+      if (got !== want) return false;
+    }
+    // search across visible fields
+    var q = STATE.search;
+    if (q) {
+      var hit = false;
+      for (var i = 0; i < STATE.fields.length; i++) {
+        var name = STATE.fields[i];
+        if (!STATE.visible[name]) continue;
+        var val = rec[name];
+        if (val === undefined || val === null) continue;
+        var s = (typeof val === "object") ? JSON.stringify(val) : String(val);
+        if (s.toLowerCase().indexOf(q) !== -1) { hit = true; break; }
+      }
+      if (!hit) return false;
+    }
+    return true;
+  }
+
+  function applyFilters() {
+    var idx = [];
+    var records = STATE.records;
+    for (var i = 0; i < records.length; i++) {
+      if (passesFilters(records[i])) idx.push(i);
+    }
+    if (STATE.sortField !== null) {
+      var sf = STATE.sortField, dir = STATE.sortDir;
+      var numeric = STATE.fieldMeta[sf] && STATE.fieldMeta[sf].numeric;
+      idx.sort(function (a, b) {
+        var va = records[a][sf], vb = records[b][sf];
+        var ua = (va === undefined || va === null), ub = (vb === undefined || vb === null);
+        if (ua && ub) return 0;
+        if (ua) return 1;      // nulls last regardless of dir
+        if (ub) return -1;
+        var r;
+        if (numeric) { r = va - vb; }
+        else {
+          var sa = (typeof va === "object") ? JSON.stringify(va) : String(va);
+          var sb = (typeof vb === "object") ? JSON.stringify(vb) : String(vb);
+          r = sa < sb ? -1 : (sa > sb ? 1 : 0);
+        }
+        return r * dir;
+      });
+    }
+    STATE.filtered = idx;
+  }
+
+  // ---------- Rendering ----------
+  function esc(s) {
+    return String(s).replace(/[&<>]/g, function (c) { return c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"; });
+  }
+
+  function renderHead() {
+    var thead = $("thead");
+    var tr = document.createElement("tr");
+    var thn = document.createElement("th");
+    thn.className = "rownum"; thn.textContent = "#";
+    tr.appendChild(thn);
+    var fields = STATE.fields;
+    for (var i = 0; i < fields.length; i++) {
+      var name = fields[i];
+      if (!STATE.visible[name]) continue;
+      var th = document.createElement("th");
+      th.dataset.field = name;
+      var arrow = "";
+      if (STATE.sortField === name) arrow = STATE.sortDir === 1 ? "▲" : "▼";
+      th.innerHTML = esc(name) + (arrow ? ' <span class="sort">' + arrow + '</span>' : ' <span class="sort">⇅</span>');
+      th.title = "Sort by " + name;
+      th.addEventListener("click", (function (n) { return function () { onSort(n); }; })(name));
+      tr.appendChild(th);
+    }
+    thead.innerHTML = "";
+    thead.appendChild(tr);
+  }
+
+  function cellContent(td, value) {
+    if (value === undefined) { td.innerHTML = '<span class="val-null">—</span>'; return; }
+    if (value === null) { td.innerHTML = '<span class="val-null">null</span>'; return; }
+    var t = typeof value;
+    if (t === "number") {
+      var span = document.createElement("span");
+      span.className = "val-num";
+      // keep raw value copyable; group only very large integers visually via title
+      span.textContent = String(value);
+      td.appendChild(span);
+      return;
+    }
+    if (t === "boolean") { td.innerHTML = '<span class="val-bool">' + value + '</span>'; return; }
+    var str, cls;
+    if (t === "object") { str = JSON.stringify(value, null, 1); cls = "val-json"; }
+    else { str = value; cls = "val-str"; }
+
+    if (str.length > LONG_LEN) {
+      var wrap = document.createElement("div");
+      wrap.className = "longcell";
+      var shortText = str.slice(0, LONG_LEN);
+      var shortSpan = document.createElement("span");
+      shortSpan.className = "short " + cls;
+      shortSpan.textContent = shortText + "… ";
+      var link = document.createElement("span");
+      link.className = "expander";
+      link.textContent = "[+" + (str.length - LONG_LEN) + " chars]";
+      var fullSpan = document.createElement("span");
+      fullSpan.className = "full " + cls;
+      fullSpan.textContent = str;
+      fullSpan.hidden = true;
+      var expanded = false;
+      link.addEventListener("click", function () {
+        expanded = !expanded;
+        shortSpan.hidden = expanded;
+        fullSpan.hidden = !expanded;
+        link.textContent = expanded ? "[– collapse]" : "[+" + (str.length - LONG_LEN) + " chars]";
+      });
+      wrap.appendChild(shortSpan);
+      wrap.appendChild(link);
+      wrap.appendChild(fullSpan);
+      td.appendChild(wrap);
+    } else {
+      var s2 = document.createElement("span");
+      s2.className = cls;
+      s2.textContent = str;
+      td.appendChild(s2);
+    }
+  }
+
+  function renderRows(reset) {
+    var tbody = $("tbody");
+    if (reset) { tbody.innerHTML = ""; STATE.rendered = 0; }
+    var fields = STATE.fields;
+    var visFields = fields.filter(function (n) { return STATE.visible[n]; });
+    var end = Math.min(STATE.rendered + CHUNK, STATE.filtered.length);
+    var frag = document.createDocumentFragment();
+    for (var r = STATE.rendered; r < end; r++) {
+      var recIdx = STATE.filtered[r];
+      var rec = STATE.records[recIdx];
+      var tr = document.createElement("tr");
+      var tdn = document.createElement("td");
+      tdn.className = "rownum";
+      tdn.textContent = String(recIdx + 1);
+      tr.appendChild(tdn);
+      for (var c = 0; c < visFields.length; c++) {
+        var td = document.createElement("td");
+        cellContent(td, rec[visFields[c]]);
+        tr.appendChild(td);
+      }
+      frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+    STATE.rendered = end;
+    updateLoadMore();
+  }
+
+  function updateLoadMore() {
+    var lm = $("loadmore"), btn = $("loadmoreBtn");
+    var remaining = STATE.filtered.length - STATE.rendered;
+    if (remaining > 0) {
+      lm.hidden = false;
+      btn.textContent = "Load " + Math.min(CHUNK, remaining) + " more (" + remaining + " remaining)";
+    } else {
+      lm.hidden = true;
+    }
+  }
+
+  // ---------- Summary UI ----------
+  function renderCounts() {
+    var el = $("counts");
+    var total = STATE.records.length;
+    var shown = STATE.filtered.length;
+    var html = "";
+    html += '<span><span class="k">records</span> <span class="v">' + total + '</span></span>';
+    html += '<span><span class="k">shown</span> <span class="v">' + shown + '</span></span>';
+    if (STATE.malformed > 0) html += '<span class="warn"><span class="k">malformed</span> <span class="v">' + STATE.malformed + '</span></span>';
+    if (STATE.blank > 0) html += '<span><span class="k">blank lines</span> <span class="v">' + STATE.blank + '</span></span>';
+    html += '<span><span class="k">fields</span> <span class="v">' + STATE.fields.length + '</span></span>';
+    if (STATE.lateFields) html += '<span class="warn"><span class="k">note</span> <span class="v">fields added after first ' + SCAN_WINDOW + ' rows</span></span>';
+    el.innerHTML = html;
+  }
+
+  function renderBreakdowns() {
+    var el = $("breakdowns");
+    el.innerHTML = "";
+    var idx = STATE.filtered;
+    for (var i = 0; i < STATE.lowCardFields.length; i++) {
+      var field = STATE.lowCardFields[i];
+      var counts = valueCounts(field, idx);
+      var pairs = sortedCountPairs(counts);
+      var div = document.createElement("div");
+      div.className = "bd";
+      var parts = ['<span class="field">' + esc(field) + ':</span>'];
+      var LIMIT = 12;
+      for (var p = 0; p < pairs.length && p < LIMIT; p++) {
+        parts.push('<span class="pair">' + esc(pairs[p][0]) + ' <b>' + pairs[p][1] + '</b></span>');
+      }
+      if (pairs.length > LIMIT) parts.push('<span class="more">+' + (pairs.length - LIMIT) + ' more</span>');
+      div.innerHTML = parts.join("&nbsp;&nbsp;");
+      el.appendChild(div);
+    }
+  }
+
+  // ---------- Filter controls ----------
+  function renderFilterControls() {
+    var el = $("filters");
+    el.innerHTML = "";
+    for (var i = 0; i < STATE.lowCardFields.length; i++) {
+      var field = STATE.lowCardFields[i];
+      var grp = document.createElement("div");
+      grp.className = "filter-group";
+      var lab = document.createElement("label");
+      lab.textContent = field;
+      var sel = document.createElement("select");
+      sel.dataset.field = field;
+      var allOpt = document.createElement("option");
+      allOpt.value = ""; allOpt.textContent = "all";
+      sel.appendChild(allOpt);
+      // values from full dataset for this field
+      var counts = valueCounts(field, allIndices());
+      var pairs = sortedCountPairs(counts);
+      for (var p = 0; p < pairs.length; p++) {
+        var opt = document.createElement("option");
+        opt.value = pairs[p][0];
+        opt.textContent = pairs[p][0] + " (" + pairs[p][1] + ")";
+        sel.appendChild(opt);
+      }
+      sel.value = STATE.filters[field] || "";
+      sel.addEventListener("change", (function (f) {
+        return function (e) {
+          STATE.filters[f] = e.target.value;
+          refresh(true);
+        };
+      })(field));
+      grp.appendChild(lab);
+      grp.appendChild(sel);
+      el.appendChild(grp);
+    }
+  }
+
+  function allIndices() {
+    if (STATE._allIdx && STATE._allIdx.length === STATE.records.length) return STATE._allIdx;
+    var a = new Array(STATE.records.length);
+    for (var i = 0; i < a.length; i++) a[i] = i;
+    STATE._allIdx = a;
+    return a;
+  }
+
+  function renderColToggles() {
+    var el = $("coltoggles");
+    el.innerHTML = "";
+    for (var i = 0; i < STATE.fields.length; i++) {
+      var name = STATE.fields[i];
+      var lab = document.createElement("label");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!STATE.visible[name];
+      cb.dataset.field = name;
+      cb.addEventListener("change", (function (n) {
+        return function (e) {
+          STATE.visible[n] = e.target.checked;
+          renderHead();
+          renderRows(true);
+        };
+      })(name));
+      lab.appendChild(cb);
+      var span = document.createElement("span");
+      var meta = STATE.fieldMeta[name];
+      span.textContent = name + (meta.hasLong ? " ¶" : "");
+      if (meta.hasLong) lab.title = "long-text field (max " + meta.maxStrLen + " chars)";
+      lab.appendChild(span);
+      el.appendChild(lab);
+    }
+  }
+
+  // ---------- Events ----------
+  function onSort(field) {
+    if (STATE.sortField === field) {
+      if (STATE.sortDir === 1) STATE.sortDir = -1;
+      else { STATE.sortField = null; STATE.sortDir = 1; } // third click clears
+    } else {
+      STATE.sortField = field; STATE.sortDir = 1;
+    }
+    renderHead();
+    applyFilters();
+    renderRows(true);
+  }
+
+  var searchTimer = null;
+  function onSearchInput(e) {
+    var val = e.target.value.toLowerCase();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () {
+      STATE.search = val;
+      refresh(true);
+    }, 140);
+  }
+
+  function refresh(rebuildFilterCounts) {
+    applyFilters();
+    renderCounts();
+    renderBreakdowns();
+    if (rebuildFilterCounts) {
+      // update option counts to reflect other active filters is nice but costly;
+      // keep option list stable (full dataset) — only refresh selection state.
+    }
+    renderRows(true);
+    updateFooter();
+  }
+
+  function updateFooter() {
+    $("footer").textContent = "showing " + STATE.rendered + " / " + STATE.filtered.length +
+      " rows in DOM · " + STATE.records.length + " total records";
+  }
+
+  // ---------- Load orchestration ----------
+  function loadText(text, sourceLabel) {
+    var res = parseJSONL(text);
+    STATE.records = res.records;
+    STATE.malformed = res.malformed;
+    STATE.blank = res.blank;
+    STATE._allIdx = null;
+    STATE.lateFields = false;
+    STATE.search = "";
+    if ($("search")) $("search").value = "";
+    analyze();
+    // Reveal UI
+    $("chrome").hidden = false;
+    $("dropzone").classList.add("hidden");
+    $("tablewrap").hidden = false;
+    $("footer").hidden = false;
+    if (sourceLabel) $("srcLabel").textContent = sourceLabel;
+    renderColToggles();
+    renderFilterControls();
+    renderHead();
+    refresh(true);
+  }
+
+  function loadFile(file) {
+    var reader = new FileReader();
+    reader.onload = function () { loadText(String(reader.result), file.name + " · " + fmtBytes(file.size)); };
+    reader.onerror = function () { alert("Failed to read file: " + (reader.error && reader.error.message)); };
+    reader.readAsText(file);
+  }
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  // ---------- Drag & drop ----------
+  function initDnD() {
+    var body = document.body;
+    ["dragenter", "dragover"].forEach(function (ev) {
+      body.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); body.classList.add("dragging"); });
+    });
+    ["dragleave", "drop"].forEach(function (ev) {
+      body.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); if (ev === "dragleave" && e.relatedTarget) return; body.classList.remove("dragging"); });
+    });
+    body.addEventListener("drop", function (e) {
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) loadFile(files[0]);
+    });
+    $("fileInput").addEventListener("change", function (e) { if (e.target.files[0]) loadFile(e.target.files[0]); });
+    $("fileInput2").addEventListener("change", function (e) { if (e.target.files[0]) loadFile(e.target.files[0]); });
+  }
+
+  // ---------- ?file= fetch ----------
+  function initFetch() {
+    var params = new URLSearchParams(location.search);
+    var file = params.get("file");
+    var hint = $("fetchHint");
+    if (!file) {
+      hint.textContent = "Tip: serve this file over http and pass ?file=path/to/data.jsonl to auto-load.";
+      return;
+    }
+    hint.textContent = "Loading " + file + " …";
+    fetch(file).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    }).then(function (text) {
+      loadText(text, file + " (fetched)");
+    }).catch(function (err) {
+      hint.textContent = "Could not fetch \"" + file + "\" (" + err.message + "). Drop the file below instead.";
+    });
+  }
+
+  // ---------- wire up ----------
+  $("search").addEventListener("input", onSearchInput);
+  $("clearFilters").addEventListener("click", function () {
+    STATE.filters = {};
+    STATE.search = "";
+    $("search").value = "";
+    var sels = $("filters").querySelectorAll("select");
+    for (var i = 0; i < sels.length; i++) sels[i].value = "";
+    refresh(true);
+  });
+  $("loadmoreBtn").addEventListener("click", function () { renderRows(false); updateFooter(); });
+  // lazy load more on scroll near bottom
+  $("tablewrap").addEventListener("scroll", function () {
+    var el = $("tablewrap");
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
+      if (STATE.rendered < STATE.filtered.length) { renderRows(false); updateFooter(); }
+    }
+  });
+
+  initDnD();
+  initFetch();
+})();
+</script>
+</body>
+</html>
