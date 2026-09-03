@@ -168,6 +168,21 @@ MODELS: dict[str, ModelSpec] = {
             "returns none). /v1/completions not served on OR."
         ),
     ),
+    "gemma-4-31b": ModelSpec(
+        name="gemma-4-31b",
+        provider="openrouter",
+        model_id="google/gemma-4-31b-it",
+        reasoning_format="field",
+        echo=False,
+        logprobs=None,
+        verified_on="2026-09-03",
+        notes=(
+            "chat: reasoning in the separate field, final answer in content; "
+            "reasoning effort set per-call via extra_body ('minimal' accepted). "
+            "Serving + shape verified; slow route (verbose reasoning even at "
+            "minimal). logprobs not checked."
+        ),
+    ),
 }
 
 
